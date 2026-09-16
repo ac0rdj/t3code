@@ -98,9 +98,9 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
     }),
   );
 
-  it.effect(
-    "reports bytes while the archive is still downloading, then verifies and extracts",
-    () =>
+  it.effect.each([true, false])(
+    "reports bytes before completion, then verifies and extracts (known size: %s)",
+    (knownSize) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -122,7 +122,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
                         controller.enqueue(archiveBytes.slice(0, 4));
                       },
                     }),
-                    { headers: { "content-length": String(archiveBytes.length) } },
+                    { headers: knownSize ? { "content-length": String(archiveBytes.length) } : {} },
                   ),
             ),
           ),
@@ -148,7 +148,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         assert.deepEqual(progress.at(-1), {
           stage: "download",
           received: 4,
-          total: archiveBytes.length,
+          total: knownSize ? archiveBytes.length : undefined,
         });
         assert.isFalse(progress.some((event) => event.stage === "extract"));
         assert.isDefined(archiveController);

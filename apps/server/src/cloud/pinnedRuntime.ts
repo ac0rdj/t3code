@@ -154,6 +154,10 @@ const fetchReleaseAsset = Effect.fn("cloud.pinned_runtime.fetch_release_asset")(
           ),
           Stream.runCollect,
         );
+        // A completed chunked response finally gives us its total size.
+        if (total === undefined && received > 0) {
+          onProgress({ stage: "download", received, total: received });
+        }
         const bytes = new Uint8Array(received);
         let offset = 0;
         for (const chunk of chunks) {

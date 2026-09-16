@@ -67,3 +67,13 @@ it("fits a narrow terminal without wrapping", () => {
   const line = output.text().split("\x1b[2K").at(-1)!;
   expect(line.length).toBeLessThan(30);
 });
+
+it("draws the final size of a fast chunked download even inside the throttle window", () => {
+  vi.spyOn(performance, "now").mockReturnValue(0);
+  const output = terminal();
+  output.report({ stage: "download", received: 0, total: undefined });
+  output.report({ stage: "download", received: 524288, total: undefined });
+  output.report({ stage: "download", received: 524288, total: 524288 });
+  output.report({ stage: "verify" });
+  expect(output.text()).toContain("100%  0.5 / 0.5 MB\n[2/4] Verifying");
+});
