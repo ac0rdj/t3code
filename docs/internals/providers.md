@@ -76,6 +76,15 @@ Ownership is cached per instance and re-read immediately before an update runs. 
 changed since the advisory, and reports success only when the refreshed provider is still installed
 with a readable, current version.
 
+## A provider without an approval primitive
+
+DeepSeek Harness runs tools in the workspace without asking the client, so no ACP
+`session/request_permission` handler is registered for it. An unhandled ACP request fails with
+"method not found", which fails closed rather than allowing silently, so the adapter stays correct if
+a future harness build starts asking. Because there is nothing to answer, its presentation hides the
+interaction-mode toggle and carries a badge instead of offering modes that cannot be enforced.
+See [the adapter](../../apps/server/src/provider/Layers/DshAdapter.ts).
+
 ## Protocol traps
 
 Codex async questions arrive as notifications and are answered with a new user message. There is

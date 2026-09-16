@@ -676,6 +676,32 @@ describe("provider enabled defaults", () => {
     expect(decoded.providers.cursor.enabled).toBe(false);
     expect(decoded.providers.grok.enabled).toBe(false);
     expect(decoded.providers.opencode.enabled).toBe(false);
+    expect(decoded.providers.dsh.enabled).toBe(false);
+  });
+
+  it("round-trips DeepSeek Harness settings through the patch boundary", () => {
+    const decoded = decodeServerSettings({
+      providers: {
+        dsh: {
+          enabled: true,
+          binaryPath: "/opt/dsh/bin/dsh",
+          homePath: "/tmp/dsh-home",
+        },
+      },
+    });
+
+    expect(decoded.providers.dsh).toMatchObject({
+      enabled: true,
+      binaryPath: "/opt/dsh/bin/dsh",
+      homePath: "/tmp/dsh-home",
+    });
+    expect(decoded.providers.dsh.binaryPath).toBe("/opt/dsh/bin/dsh");
+  });
+
+  it("keeps the DeepSeek Harness home opaque and omittable", () => {
+    const decoded = decodeServerSettings({ providers: { dsh: { enabled: true } } });
+    expect(decoded.providers.dsh.homePath).toBe("");
+    expect(decoded.providers.dsh.binaryPath).toBe("dsh");
   });
 
   it("keeps Cursor enabled when an existing user explicitly opted in", () => {

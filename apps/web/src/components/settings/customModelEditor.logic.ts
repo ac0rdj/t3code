@@ -101,6 +101,9 @@ export const DESCRIPTOR_PRESETS_BY_KIND: Partial<
       ],
     },
   ],
+  [ProviderDriverKind.make("dsh")]: [
+    { id: "reasoningEffort", label: "Reasoning", type: "select", choices: EFFORT_CHOICES },
+  ],
 };
 
 let nextKey = 0;

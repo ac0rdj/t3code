@@ -71,9 +71,11 @@ function readInstanceCustomModels(
   if (instanceId !== defaultInstanceId) {
     return [];
   }
+  // Not every driver has a custom-model surface (DSH selects only the models
+  // its ACP option advertises), so the field is optional here.
   const legacyProviders = settings.providers as Record<
     string,
-    { readonly customModels: ReadonlyArray<unknown> } | undefined
+    { readonly customModels?: ReadonlyArray<unknown> } | undefined
   >;
   return readCustomModelEntries(legacyProviders[driverKind]?.customModels ?? []);
 }

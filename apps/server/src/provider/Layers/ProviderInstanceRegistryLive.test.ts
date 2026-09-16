@@ -10,7 +10,7 @@
  *
  *  2. **Many drivers, one registry** — the "all drivers slice" describe
  *     block below configures one instance of every shipped driver
- *     (`codex`, `claudeAgent`, `cursor`, `grok`, `opencode`) in a single
+ *     (`codex`, `claudeAgent`, `cursor`, `grok`, `opencode`, `dsh`) in a single
  *     `ProviderInstanceConfigMap` and asserts the registry boots them all
  *     without cross-contamination. This proves the driver SPI is uniform
  *     across every provider — any driver plugs into the registry through
@@ -19,7 +19,7 @@
  * Every instance in these tests is configured with `enabled: false` so the
  * provider-status checks short-circuit to pending/disabled snapshots
  * without trying to spawn real `codex` / `claude` / `agent` / `grok` / `opencode`
- * binaries. That keeps the assertions focused on registry routing
+ * / `dsh` binaries. That keeps the assertions focused on registry routing
  * behaviour rather than the runtime details of each provider.
  */
 import { describe, expect, it } from "@effect/vitest";
@@ -28,6 +28,7 @@ import {
   type ClaudeSettings,
   type CodexSettings,
   type CursorSettings,
+  type DshSettings,
   type GrokSettings,
   type OpenCodeSettings,
   ProviderDriverKind,
@@ -52,6 +53,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { ClaudeDriver } from "../Drivers/ClaudeDriver.ts";
 import { CodexDriver } from "../Drivers/CodexDriver.ts";
 import { CursorDriver } from "../Drivers/CursorDriver.ts";
+import { DshDriver } from "../Drivers/DshDriver.ts";
 import { GrokDriver } from "../Drivers/GrokDriver.ts";
 import { OpenCodeDriver } from "../Drivers/OpenCodeDriver.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -130,6 +132,13 @@ const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
   enabled: false,
   binaryPath: "grok",
   customModels: [],
+  ...overrides,
+});
+
+const makeDshConfig = (overrides: Partial<DshSettings>): DshSettings => ({
+  enabled: false,
+  binaryPath: "dsh",
+  homePath: "",
   ...overrides,
 });
 
@@ -469,12 +478,14 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       const cursorId = ProviderInstanceId.make("cursor_default");
       const grokId = ProviderInstanceId.make("grok_default");
       const openCodeId = ProviderInstanceId.make("opencode_default");
+      const dshId = ProviderInstanceId.make("dsh_default");
 
       const codexDriverKind = ProviderDriverKind.make("codex");
       const claudeDriverKind = ProviderDriverKind.make("claudeAgent");
       const cursorDriverKind = ProviderDriverKind.make("cursor");
       const grokDriverKind = ProviderDriverKind.make("grok");
       const openCodeDriverKind = ProviderDriverKind.make("opencode");
+      const dshDriverKind = ProviderDriverKind.make("dsh");
 
       const configMap: ProviderInstanceConfigMap = {
         [codexId]: {
@@ -510,10 +521,16 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
           enabled: false,
           config: makeOpenCodeConfig({}),
         },
+        [dshId]: {
+          driver: dshDriverKind,
+          displayName: "DeepSeek Harness",
+          enabled: false,
+          config: makeDshConfig({}),
+        },
       };
 
       const { registry } = yield* makeProviderInstanceRegistry<BuiltInDriversEnv>({
-        drivers: [CodexDriver, ClaudeDriver, CursorDriver, GrokDriver, OpenCodeDriver],
+        drivers: [CodexDriver, ClaudeDriver, CursorDriver, GrokDriver, OpenCodeDriver, DshDriver],
         configMap,
       });
 
@@ -523,9 +540,9 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       expect(unavailable).toEqual([]);
 
       const instances = yield* registry.listInstances;
-      expect(instances).toHaveLength(5);
+      expect(instances).toHaveLength(6);
       expect(instances.map((instance) => instance.instanceId).toSorted()).toEqual(
-        [codexId, claudeId, cursorId, grokId, openCodeId].toSorted(),
+        [codexId, claudeId, cursorId, grokId, openCodeId, dshId].toSorted(),
       );
 
       // Instance lookup by id resolves each instance to its own bundle —
@@ -536,16 +553,19 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       const cursor = yield* registry.getInstance(cursorId);
       const grok = yield* registry.getInstance(grokId);
       const openCode = yield* registry.getInstance(openCodeId);
+      const dsh = yield* registry.getInstance(dshId);
       expect(codex?.driverKind).toBe(codexDriverKind);
       expect(claude?.driverKind).toBe(claudeDriverKind);
       expect(cursor?.driverKind).toBe(cursorDriverKind);
       expect(grok?.driverKind).toBe(grokDriverKind);
       expect(openCode?.driverKind).toBe(openCodeDriverKind);
+      expect(dsh?.driverKind).toBe(dshDriverKind);
       expect(codex?.displayName).toBe("Codex");
       expect(claude?.displayName).toBe("Claude");
       expect(cursor?.displayName).toBe("Cursor");
       expect(grok?.displayName).toBe("Grok");
       expect(openCode?.displayName).toBe("OpenCode");
+      expect(dsh?.displayName).toBe("DeepSeek Harness");
 
       // Every instance owns its own set of closures — no sharing across
       // drivers. `adapter` / `textGeneration` / `snapshot` are all
@@ -558,6 +578,7 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
         cursor!.adapter,
         grok!.adapter,
         openCode!.adapter,
+        dsh!.adapter,
       ];
       expect(new Set(adapters).size).toBe(adapters.length);
       const textGenerations = [
@@ -566,6 +587,7 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
         cursor!.textGeneration,
         grok!.textGeneration,
         openCode!.textGeneration,
+        dsh!.textGeneration,
       ];
       expect(new Set(textGenerations).size).toBe(textGenerations.length);
       const snapshots = [
@@ -574,6 +596,7 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
         cursor!.snapshot,
         grok!.snapshot,
         openCode!.snapshot,
+        dsh!.snapshot,
       ];
       expect(new Set(snapshots).size).toBe(snapshots.length);
 

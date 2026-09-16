@@ -747,6 +747,141 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ]);
       });
 
+      it("drops a DeepSeek Harness model id that is no longer advertised", () => {
+        // The old build stored a `provider/model` slug; the current one stores the
+        // model id. A successful check advertises only the id, so the qualified
+        // row must disappear instead of leaving one model listed twice.
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("dsh"),
+          driver: ProviderDriverKind.make("dsh"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "unknown" },
+          checkedAt: "2026-07-17T00:00:00.000Z",
+          version: "0.1.5",
+          models: [
+            {
+              slug: "deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+            {
+              slug: "deepseek-official/deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-07-17T00:01:00.000Z",
+          models: [
+            {
+              slug: "deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
+          ...refreshedProvider.models,
+        ]);
+      });
+
+      it("retains the last DeepSeek Harness catalog when discovery degrades", () => {
+        // A failed catalog probe is a `warning` on an installed provider: the
+        // harness still runs, so the picker must not lose the known models.
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("dsh"),
+          driver: ProviderDriverKind.make("dsh"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-07-17T00:00:00.000Z",
+          version: "0.1.5",
+          models: [
+            {
+              slug: "deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+            {
+              slug: "deepseek-v4-pro",
+              name: "DeepSeek-V4-Pro",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        // The provider itself is fine, so the check reports a warning and falls
+        // back to the built-in row instead of the discovered catalog.
+        const degradedProvider = {
+          ...previousProvider,
+          status: "warning",
+          checkedAt: "2026-07-17T00:01:00.000Z",
+          models: [
+            {
+              slug: "deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          message: "Model discovery failed, so the model picker may be incomplete.",
+        } satisfies ServerProvider;
+
+        // The fallback row is already known; the point is that the model missing
+        // from this degraded snapshot survives rather than being dropped.
+        const merged = mergeProviderSnapshot(previousProvider, degradedProvider).models;
+        assert.deepStrictEqual(merged, [...previousProvider.models]);
+        assert.ok(merged.some((model) => model.slug === "deepseek-v4-pro"));
+      });
+
+      it("still retains DeepSeek Harness models when the check fails", () => {
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("dsh"),
+          driver: ProviderDriverKind.make("dsh"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "unknown" },
+          checkedAt: "2026-07-17T00:00:00.000Z",
+          version: "0.1.5",
+          models: [
+            {
+              slug: "deepseek-v4-flash",
+              name: "DeepSeek-V4-Flash",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          status: "error",
+          checkedAt: "2026-07-17T00:01:00.000Z",
+          models: [],
+          message: "Model discovery failed.",
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
+          ...previousProvider.models,
+        ]);
+      });
+
       it("retains stale OpenCode models when a refresh fails", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("opencode"),
@@ -2628,6 +2763,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 "claudeAgent",
                 "codex",
                 "cursor",
+                "dsh",
                 "grok",
                 "opencode",
               ]);

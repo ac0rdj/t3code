@@ -733,6 +733,43 @@ export const GrokSettings = makeProviderSettingsSchema(
 );
 export type GrokSettings = typeof GrokSettings.Type;
 
+export const DshSettings = makeProviderSettingsSchema(
+  {
+    // Off by default (like Cursor, Grok, and OpenCode): the binding is opt-in
+    // from Settings. DeepSeek Harness executes tools without asking this
+    // client for approval, so enabling it is a deliberate choice.
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("dsh").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the DeepSeek Harness CLI. It is the `dsh` command.",
+        providerSettingsForm: { placeholder: "dsh", clearWhenEmpty: "omit" },
+      }),
+    ),
+    homePath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "DSH_HOME path",
+        description:
+          "Harness home and credential store for this instance. Leave empty to use the machine default.",
+        providerSettingsForm: {
+          placeholder: "~/.dsh",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+    // No custom-model surface: DSH accepts only the models its ACP option
+    // advertises, so an arbitrary entry could never be selected.
+  },
+  {
+    order: ["binaryPath", "homePath"],
+  },
+);
+export type DshSettings = typeof DshSettings.Type;
+
 /**
  * Antigravity ACP auth methods. Personal and Enterprise open a Google sign-in
  * in the browser. The API key and Agent Platform methods take credentials from
@@ -1173,6 +1210,7 @@ export const ServerSettings = Schema.Struct({
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     antigravity: AntigravitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    dsh: DshSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob
@@ -1328,6 +1366,12 @@ const GrokSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
 });
 
+const DshSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  homePath: Schema.optionalKey(TrimmedString),
+});
+
 const AntigravitySettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   authMethod: Schema.optionalKey(AntigravityAuthMethod),
@@ -1420,6 +1464,7 @@ export const ServerSettingsPatch = Schema.Struct({
       grok: Schema.optionalKey(GrokSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
       antigravity: Schema.optionalKey(AntigravitySettingsPatch),
+      dsh: Schema.optionalKey(DshSettingsPatch),
     }),
   ),
   // Whole-map replacement for the new instance config. Patching individual

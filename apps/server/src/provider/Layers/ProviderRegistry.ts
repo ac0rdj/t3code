@@ -103,7 +103,12 @@ export function upsertProviderWorkspaceSnapshot(
 const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean => {
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
-  if (!isAntigravity && !isCodex && provider.driver !== ProviderDriverKind.make("opencode")) {
+  const isOpenCode = provider.driver === ProviderDriverKind.make("opencode");
+  // DeepSeek Harness advertises its whole catalog on every successful check, so a
+  // missing model is a retired one. Retaining them would also strand a model id
+  // from an older build, which is how one model ends up listed twice.
+  const isDsh = provider.driver === ProviderDriverKind.make("dsh");
+  if (!isAntigravity && !isCodex && !isOpenCode && !isDsh) {
     return true;
   }
 
@@ -121,8 +126,15 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   const isPendingInitialProbe =
     provider.enabled && !provider.installed && provider.status === "warning";
   const didInstalledProviderProbeFail = provider.installed && provider.status === "error";
+  // DeepSeek Harness reports a failed catalog probe as a warning on an installed
+  // provider. The harness still works in that state, so a transient failure must
+  // not throw away the models it already advertised.
+  const didDshCatalogProbeFail = isDsh && provider.installed && provider.status === "warning";
   return (
-    isPendingAntigravityAuthentication || isPendingInitialProbe || didInstalledProviderProbeFail
+    isPendingAntigravityAuthentication ||
+    isPendingInitialProbe ||
+    didInstalledProviderProbeFail ||
+    didDshCatalogProbeFail
   );
 };
 
