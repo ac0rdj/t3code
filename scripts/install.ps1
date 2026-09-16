@@ -26,6 +26,19 @@ function Fail([string] $message) {
   exit 1
 }
 
+function Step([int] $number, [string] $message) {
+  Write-Host "`n[$number/5] $message"
+}
+# Scope the preference to the download, including when invoked through iex.
+function Fetch([string] $uri, [string] $destination, [switch] $progress) {
+  $ProgressPreference = if ($progress -and -not [Console]::IsOutputRedirected -and $env:TERM -ne "dumb") { "Continue" } else { "SilentlyContinue" }
+  Invoke-WebRequest -Uri $uri -OutFile $destination -UseBasicParsing
+}
+if (-not [Console]::IsOutputRedirected -and $env:TERM -ne "dumb") {
+  Write-Host "`n  TTTTT  3333`n    T       3`n    T     33`n    T       3`n    T    3333`n`n  T3 Code"
+}
+Step 1 "Finding your release..."
+
 # PROCESSOR_ARCHITEW6432 reports the real machine when a 32-bit PowerShell
 # runs under WOW64; RuntimeInformation needs .NET 4.7.1+, which 5.1 hosts
 # may lack.
@@ -73,9 +86,9 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
   $staging = Join-Path $versionsDir (".staging-" + [System.IO.Path]::GetRandomFileName())
   New-Item -ItemType Directory -Path $staging | Out-Null
   try {
-    Write-Host "Downloading $archive..."
+    Step 2 "Downloading T3 Code $version..."
     try {
-      Invoke-WebRequest -Uri "$baseUrl/v$version/SHA256SUMS" -OutFile (Join-Path $staging "SHA256SUMS") -UseBasicParsing
+      Fetch "$baseUrl/v$version/SHA256SUMS" (Join-Path $staging "SHA256SUMS")
     } catch {
       $status = $_.Exception.Response.StatusCode.value__
       if ($status -eq 404) {
@@ -83,7 +96,9 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
       }
       throw
     }
-    Invoke-WebRequest -Uri "$baseUrl/v$version/$archive" -OutFile (Join-Path $staging $archive) -UseBasicParsing
+    Fetch "$baseUrl/v$version/$archive" (Join-Path $staging $archive) -progress
+
+    Step 3 "Verifying the download..."
 
     $expected = (Get-Content (Join-Path $staging "SHA256SUMS") | Where-Object { $_ -match "\s\*?$([regex]::Escape($archive))$" } | Select-Object -First 1)
     if (-not $expected) { Fail "$archive is not listed in SHA256SUMS" }
@@ -91,6 +106,7 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
     $actual = (Get-FileHash -Algorithm SHA256 (Join-Path $staging $archive)).Hash.ToLowerInvariant()
     if ($actual -ne $expected) { Fail "checksum mismatch for $archive" }
 
+    Step 4 "Extracting T3 Code..."
     Expand-Archive -Path (Join-Path $staging $archive) -DestinationPath $staging -Force
     # The archive wraps everything in one directory named after its stem.
     Get-ChildItem (Join-Path $staging $stem) | Move-Item -Destination $staging
@@ -108,12 +124,13 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
   }
 }
 
+Step 5 "Setting up the t3 command..."
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 $shim = Join-Path $binDir "t3.cmd"
 # UTF-8 without a BOM: cmd.exe reads the shim as-is, and ASCII would corrupt
 # non-ASCII characters in the user's home path.
 [System.IO.File]::WriteAllText($shim, "@echo off`r`n`"$(Join-Path $targetDir 't3.exe')`" %*", (New-Object System.Text.UTF8Encoding $false))
-Write-Host "Installed t3 $version"
+Write-Host "`nInstalled t3 $version"
 Write-Host "  $shim -> $(Join-Path $targetDir 't3.exe')"
 if (($env:PATH -split ";") -notcontains $binDir) {
   Write-Host "Add $binDir to your PATH to run t3."

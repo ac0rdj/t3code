@@ -27,16 +27,36 @@ fail() {
   exit 1
 }
 
+# Keep piped installs interactive when stderr is still a terminal.
+interactive=false
+if [ -t 2 ] && [ "${TERM:-}" != dumb ]; then interactive=true; fi
+step() { printf '\n[%s/5] %s\n' "$1" "$2" >&2; }
+if "$interactive"; then
+  printf '%s\n' '' '  TTTTT  3333' '    T       3' '    T     33' '    T       3' '    T    3333' '' '  T3 Code' >&2
+fi
+step 1 "Finding your release..."
+
 # Exit 44 on a 404 so callers can tell "no such asset" from a network failure.
 fetch() {
   if command -v curl >/dev/null 2>&1; then
-    status="$(curl -sSL -w '%{http_code}' "$1" -o "$2")" || return 1
+    curl_progress="-sS"
+    if [ "${3:-}" = progress ] && "$interactive"; then curl_progress="-#S"; fi
+    status="$(curl "$curl_progress" -L -w '%{http_code}' "$1" -o "$2")" || return 1
     case "$status" in
       2??) return 0 ;;
       404) return 44 ;;
       *) printf 'GET %s returned HTTP %s\n' "$1" "$status" >&2; return 1 ;;
     esac
   elif command -v wget >/dev/null 2>&1; then
+    if [ "${3:-}" = progress ] && "$interactive"; then
+      # GNU wget can keep diagnostics quiet while showing its native bar.
+      if wget --help 2>&1 | grep -q -- '--show-progress'; then
+        wget -q --show-progress "$1" -O "$2"
+      else
+        wget "$1" -O "$2"
+      fi
+      return $?
+    fi
     wget -q --server-response "$1" -O "$2" 2>"$2.headers" && rm -f "$2.headers" && return 0
     if grep -q ' 404 ' "$2.headers" 2>/dev/null; then rm -f "$2.headers"; return 44; fi
     cat "$2.headers" >&2; rm -f "$2.headers"; return 1
@@ -106,7 +126,7 @@ else
   staging="$(mktemp -d "${versions_dir}/.staging-XXXXXX")"
   trap 'rm -rf "$staging"' EXIT
 
-  printf 'Downloading %s...\n' "$archive"
+  step 2 "Downloading T3 Code ${version}..."
   fetch_status=0
   fetch "${base_url}/v${version}/SHA256SUMS" "${staging}/SHA256SUMS" || fetch_status=$?
   if [ "$fetch_status" -eq 44 ]; then
@@ -114,13 +134,15 @@ else
   elif [ "$fetch_status" -ne 0 ]; then
     fail "could not download the release checksums"
   fi
-  fetch "${base_url}/v${version}/${archive}" "${staging}/${archive}"
+  fetch "${base_url}/v${version}/${archive}" "${staging}/${archive}" progress
 
+  step 3 "Verifying the download..."
   expected="$(grep " \*\{0,1\}${archive}\$" "${staging}/SHA256SUMS" | cut -d' ' -f1)"
   [ -n "$expected" ] || fail "${archive} is not listed in SHA256SUMS"
   actual="$(checksum "${staging}/${archive}")"
   [ "$actual" = "$expected" ] || fail "checksum mismatch for ${archive}"
 
+  step 4 "Extracting T3 Code..."
   tar -xzf "${staging}/${archive}" -C "$staging" --strip-components=1
   rm -f "${staging}/${archive}" "${staging}/SHA256SUMS"
   "${staging}/t3" --version >/dev/null || fail "the downloaded executable does not run"
@@ -131,9 +153,10 @@ else
   trap - EXIT
 fi
 
+step 5 "Setting up the t3 command..."
 mkdir -p "$bin_dir"
 ln -sfn "${target_dir}/t3" "${bin_dir}/t3"
-printf 'Installed t3 %s\n  %s -> %s\n' "$version" "${bin_dir}/t3" "${target_dir}/t3"
+printf '\nInstalled t3 %s\n  %s -> %s\n' "$version" "${bin_dir}/t3" "${target_dir}/t3"
 case ":${PATH}:" in
   *":${bin_dir}:"*) ;;
   *) printf 'Add %s to your PATH to run `t3`.\n' "$bin_dir" ;;

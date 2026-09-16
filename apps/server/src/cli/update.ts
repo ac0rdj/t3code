@@ -42,6 +42,7 @@ import { compareExactServiceVersions, isExactServiceVersion } from "../cloud/ser
 import * as ProcessRunner from "../processRunner.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
+import { createUpdateProgress } from "./updateProgress.ts";
 import { bootServiceLayer } from "./service.ts";
 
 export class CliUpdateError extends Schema.TaggedError<CliUpdateError>()("CliUpdateError", {
@@ -357,6 +358,7 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
       reason: `'${input.requestedVersion}' is not an exact t3 version.`,
     });
   }
+  yield* Console.log("Checking for updates...");
   const targetVersion = input.requestedVersion ?? (yield* resolveNewestVersion(channel));
   const targetChannel = cliReleaseChannelOf(targetVersion);
 
@@ -476,7 +478,9 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     }
   }
 
+  const progress = createUpdateProgress();
   const runtime = yield* ensurePinnedRuntimeInstalled({
+    onProgress: progress.report,
     baseDir: input.baseDir,
     version: targetVersion,
     fs,
@@ -510,6 +514,7 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
           ),
         ),
   }).pipe(
+    Effect.ensuring(Effect.sync(progress.finish)),
     Effect.catchIf(
       (error): error is PinnedRuntimeInstallError =>
         error._tag === "PinnedRuntimeInstallError" &&
@@ -539,6 +544,11 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   // version; only the restart itself waits for the user's answer.
   let serviceUpdated = false;
   if (serviceInstalled && !serviceCurrent) {
+    yield* Console.log(
+      restartService
+        ? "Restarting the background service..."
+        : "Updating the background service...",
+    );
     yield* BootService.BootService.pipe(
       Effect.flatMap((target) =>
         target.install({ allowDowngrade: input.allowDowngrade, start: restartService }),
